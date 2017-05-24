@@ -94,8 +94,8 @@ module Doremi
     # Shutdowns the application gracefully.
     def shutdown
       STDERR.puts '' # just new line after '^C'
-      STDERR.puts 'Bye bye'
       Docker.reset!
+      STDERR.puts 'Bye bye'
       exit
     end
   end
@@ -113,8 +113,8 @@ if ARGV[0] == '--run'
 
   Doremi::App.instance.build do
     service :extract, Doremi::ContainerFilter
-    # service :sniffer,     WeatherTS::IndexSniffer
-    # service :filter,      WeatherTS::DbFilter
+    # service :transform,     Doremi::
+    # service :load,      Doremi::
   end
 
   Doremi::App.instance.run

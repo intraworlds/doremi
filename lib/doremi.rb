@@ -1,6 +1,7 @@
-require 'singleton'
 require 'logger'
+require 'json'
 require 'docker'
+require 'consul'
 
 # This module represents namespace of the tool.
 module Doremi
@@ -17,31 +18,8 @@ module Doremi
     attr_accessor :logger
   end
 
-  autoload :ContainerFilter,   'container_filter'
-  # autoload :PngLoader,         'png_loader'
-
-  # You know: utilities...
-  module Utils
-
-    # Makes available the properly configured log for any client.
-    def log
-      log = Doremi::logger
-      log.progname = self.class.name.split('::').last || ''
-      log
-    end
-
-    # Gets a context for the process based on thread local variable.
-    def context
-      Thread.current[:ctx] ||= {}
-    end
-
-  end
-
-
   # This class represents the main application class and entry point.
   class App
-    include ::Singleton
-    include Utils
 
     # Service Locator.
     def service(key, with = nil)
@@ -54,7 +32,7 @@ module Doremi
       else
         @services[key.to_sym] = with # setter via object
       end
-      log.debug "added service '#{key}'"
+      Doremi::logger.debug "added service '#{key}'"
     end
 
     # Initializes all services that the engine depends on.
@@ -66,7 +44,7 @@ module Doremi
     # Runs the application.
     # This method represents a template method for the process.
     def run
-      log.info "starting..., version=#{VERSION}, pid=#{Process.pid}"
+      Doremi::logger.info "starting..., version=#{VERSION}, pid=#{Process.pid}"
       trap('INT')  { shutdown }
       trap('TERM')  { shutdown }
 
@@ -75,18 +53,21 @@ module Doremi
 
       Docker::Event.stream do |event|
         Thread.new do
-          etl(event)
+          begin
+            etl(event)
+          rescue Exception => e
+            Doremi::logger.error e
+          end
         end
       end
     end
 
     # Runs the ETL process.
     def etl(event)
-      log.debug "starting ETL..., type=#{event.type}, status=#{event.status}"
+      Doremi::logger.debug "starting ETL..., type=#{event.type}, status=#{event.status}"
       input = event
-      [:extract].each do |step|
-    #   [:extract, :transform, :load].each do |step|
-        input = service(step).exec(input)
+      [:extract, :transform, :load].each do |step|
+        input = service(step).call(input)
         break if input.nil?
       end
     end
@@ -111,11 +92,43 @@ if ARGV[0] == '--run'
   Doremi::logger.level = Logger::INFO
   Doremi::logger.level = Logger::DEBUG if __FILE__ == $0 # DEVELOPMENT MODE
 
-  Doremi::App.instance.build do
-    service :extract, Doremi::ContainerFilter
-    # service :transform,     Doremi::
-    # service :load,      Doremi::
+  extract = lambda do |event|
+    if event.type == 'container' and (event.status == 'stop' or event.status == 'start')
+      unless event.actor.attributes['name'] =~ /consul/ # do not register Consul in Consul
+        Doremi::logger.info "container name=#{event.actor.attributes['name']}, status=#{event.status}, id=#{event.id}"
+        return event
+      end
+    end
+    nil
   end
 
-  Doremi::App.instance.run
+  transform = lambda do |event|
+    if event.status == 'start'
+      info = Docker::Container.get(event.id).info
+# puts JSON.pretty_generate(info)
+      reg = Doremi::Consul::Register.new info
+      Doremi::logger.info "consul registration data: #{reg}"
+      reg
+    else
+      nil
+    end
+  end
+
+  load = lambda do |reg|
+    rslt = Doremi::Consul::Adapter.new('http://localhost:8500').register(reg)
+    if 200 == rslt.status
+      Doremi::logger.info 'registration OK'
+    else
+      Doremi::logger.warn "registration failed: #{rslt.status}, #{rslt.body}"
+    end
+  end
+
+  app = Doremi::App.new
+  app.build do
+    service :extract,   extract
+    service :transform, transform
+    service :load,      load
+  end
+
+  app.run
 end

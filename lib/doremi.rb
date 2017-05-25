@@ -21,6 +21,9 @@ module Doremi
   # This class represents the main application class and entry point.
   class App
 
+    # Just keys used in ETL processing.
+    ETL = [:extract, :transform, :load]
+
     # Service Locator.
     def service(key, with = nil)
       @services ||= {}
@@ -49,7 +52,7 @@ module Doremi
       trap('TERM')  { shutdown }
 
       # preconditions
-      raise 'ETL not fully initialized' if service(:extract).nil? #or service(:transfer).nil? or service(:load).nil?
+      ETL.each { |k| raise "invalid ETL, missing key=#{k}" if service(k).nil? }
 
       Docker::Event.stream do |event|
         Thread.new do
@@ -66,7 +69,7 @@ module Doremi
     def etl(event)
       Doremi::logger.debug "starting ETL..., type=#{event.type}, status=#{event.status}"
       input = event
-      [:extract, :transform, :load].each do |step|
+      ETL.each do |step|
         input = service(step).call(input)
         break if input.nil?
       end
@@ -106,7 +109,7 @@ if ARGV[0] == '--run'
     if event.status == 'start'
       info = Docker::Container.get(event.id).info
 # puts JSON.pretty_generate(info)
-      reg = Doremi::Consul::Register.new info
+      reg = Doremi::Consul::Register.new(info)
       Doremi::logger.info "consul registration data: #{reg}"
       reg
     else
@@ -129,6 +132,6 @@ if ARGV[0] == '--run'
     service :transform, transform
     service :load,      load
   end
-
   app.run
+
 end

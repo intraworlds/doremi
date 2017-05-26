@@ -50,6 +50,7 @@ module Doremi
       Doremi::logger.info "starting..., version=#{VERSION}, pid=#{Process.pid}"
       trap('INT')  { shutdown }
       trap('TERM')  { shutdown }
+      Docker.options[:read_timeout] = 3600 # need to be made higher than 60 seconds if expecting a long time between events
 
       # preconditions
       ETL.each { |k| raise "invalid ETL, missing key=#{k}" if service(k).nil? }

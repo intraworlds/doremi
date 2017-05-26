@@ -110,19 +110,23 @@ if ARGV[0] == '--run'
       info = Docker::Container.get(event.id).info
 # puts JSON.pretty_generate(info)
       reg = Doremi::Consul::Register.new(info)
-      Doremi::logger.info "consul registration data: #{reg}"
+      Doremi::logger.info "consul registration, data: #{reg}"
       reg
+    elsif event.status == 'stop'
+      dereg = Doremi::Consul::Deregister.new(event)
+      Doremi::logger.info "consul deregistration, id=#{dereg}"
+      dereg
     else
       nil
     end
   end
 
-  load = lambda do |reg|
-    rslt = Doremi::Consul::Adapter.new('http://localhost:8500').register(reg)
+  load = lambda do |command|
+    rslt = command.exec
     if 200 == rslt.status
-      Doremi::logger.info 'registration OK'
+      Doremi::logger.info 'command OK'
     else
-      Doremi::logger.warn "registration failed: #{rslt.status}, #{rslt.body}"
+      Doremi::logger.warn "command failed: #{rslt.status}, #{rslt.body}"
     end
   end
 

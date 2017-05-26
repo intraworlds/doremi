@@ -12,7 +12,8 @@ module Doremi
       def initialize(docker_info, url='http://localhost:8500')
         @reg = {}
         @reg[:ID] = docker_info['id']
-        @reg[:Name] = docker_info['Config']['Labels']['com.docker.compose.service']
+        # @reg[:Name] = docker_info['Config']['Labels']['com.docker.compose.service']
+        @reg[:Name] = docker_info['Config']['Image'].split('/')[1]
         @reg[:Address] = "127.0.0.1"
         @reg[:Port] = docker_info['NetworkSettings']['Ports'].values[0][0]['HostPort'].to_i
 

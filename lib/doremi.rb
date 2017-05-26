@@ -54,15 +54,26 @@ module Doremi
       # preconditions
       ETL.each { |k| raise "invalid ETL, missing key=#{k}" if service(k).nil? }
 
-      Docker::Event.stream do |event|
-        Thread.new do
-          begin
-            etl(event)
-          rescue Exception => e
-            Doremi::logger.error e
+      begin
+        begin
+          Docker::Event.stream do |event|
+            Thread.new do
+              begin
+                etl(event)
+              rescue Exception => e
+                Doremi::logger.error e
+              end
+            end
           end
+        rescue Docker::Error::TimeoutError => e
+          Doremi::logger.warn "Docker connection timeout -> reconnect, msg=#{e.message}"
+        rescue ::SystemExit
+          break
+        rescue ::Exception => e
+          Doremi::logger.fatal e
+          break
         end
-      end
+      end while true
     end
 
     # Runs the ETL process.
@@ -79,8 +90,7 @@ module Doremi
     def shutdown
       STDERR.puts '' # just new line after '^C'
       Docker.reset!
-      STDERR.puts 'Bye bye'
-      exit
+      abort('Bye bye')
     end
   end
 
@@ -108,7 +118,7 @@ if ARGV[0] == '--run'
   transform = lambda do |event|
     if event.status == 'start'
       info = Docker::Container.get(event.id).info
-# puts JSON.pretty_generate(info)
+# puts JSON.pretty_generate(info['Config']['Image'])
       reg = Doremi::Consul::Register.new(info)
       Doremi::logger.info "consul registration, data: #{reg}"
       reg

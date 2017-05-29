@@ -120,12 +120,17 @@ if ARGV[0] == '--run'
   transform = lambda do |event|
     if event.status == 'start'
       info = Docker::Container.get(event.id).info
-# puts JSON.pretty_generate(info['Config']['Image'])
-      reg = Doremi::Consul::Register.new(info)
+# puts JSON.pretty_generate(info['Config'])
+      reg = Doremi::Consul::Register.new(event.id)
+# @reg[:Name] = docker_info['Config']['Labels']['com.docker.compose.service']
+      reg.params[:Name] = info['Config']['Image'].split('/')[1]
+      reg.params[:Address] = "127.0.0.1"
+      reg.params[:Port] = info['NetworkSettings']['Ports'].values[0][0]['HostPort'].to_i
+
       Doremi::logger.info "consul registration, data: #{reg}"
       reg
     elsif event.status == 'stop'
-      dereg = Doremi::Consul::Deregister.new(event)
+      dereg = Doremi::Consul::Deregister.new(event.id)
       Doremi::logger.info "consul deregistration, id=#{dereg}"
       dereg
     else

@@ -11,8 +11,8 @@ module Doremi
       attr_reader :params
 
       # Constructor.
-      def initialize(docker_id, url='http://localhost:8500')
-        @params = { :ID => docker_id }
+      def initialize(name, url='http://localhost:8500')
+        @params = { :Name => name }
         @url = url
       end
 

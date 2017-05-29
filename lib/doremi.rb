@@ -2,6 +2,7 @@ require 'logger'
 require 'json'
 require 'docker'
 require 'consul'
+require 'socket'
 
 # This module represents namespace of the tool.
 module Doremi
@@ -121,11 +122,16 @@ if ARGV[0] == '--run'
     if event.status == 'start'
       info = Docker::Container.get(event.id).info
 # puts JSON.pretty_generate(info['Config'])
-      reg = Doremi::Consul::Register.new(event.id)
-# @reg[:Name] = docker_info['Config']['Labels']['com.docker.compose.service']
-      reg.params[:Name] = info['Config']['Image'].split('/')[1]
-      reg.params[:Address] = "127.0.0.1"
+      service_name = info['Config']['Image'].split('/')[1]
+      reg = Doremi::Consul::Register.new(service_name)
+      reg.params[:ID] = info['id']
+      reg.params[:Address] = Socket.gethostname
       reg.params[:Port] = info['NetworkSettings']['Ports'].values[0][0]['HostPort'].to_i
+      reg.params[:Check] = {
+          Name: "health-check for #{service_name}",
+          script: 'echo "AHOJ"',
+          interval: '30s'
+      }
 
       Doremi::logger.info "consul registration, data: #{reg}"
       reg

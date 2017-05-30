@@ -3,6 +3,7 @@ require 'json'
 require 'docker'
 require 'consul'
 require 'socket'
+require 'optparse'
 
 # This module represents namespace of the tool.
 module Doremi
@@ -102,7 +103,11 @@ end
 #####################
 # --== Bootstrap ==--
 
-if ARGV[0] == '--run'
+$opts = ARGV.getopts('', 'run', 'consul:').map{|k,v| [k.to_sym, v]}.to_h
+
+$opts[:consul] = ENV['CONSUL_URL'] if ENV.has_key? 'CONSUL_URL'
+
+if $opts[:run]
 
   STDOUT.sync = true
   Doremi::logger = Logger.new(STDOUT)
@@ -124,7 +129,7 @@ if ARGV[0] == '--run'
       info = Docker::Container.get(event.id).info
 # puts JSON.pretty_generate(info['Config'])
       service_name = info['Config']['Image'].split('/')[1]
-      reg = Doremi::Consul::Register.new(service_name)
+      reg = Doremi::Consul::Register.new(service_name, $opts.fetch(:consul, 'http://localhost:8500'))
       reg.params[:ID] = info['id']
       reg.params[:Address] = Socket.gethostname
       reg.params[:Port] = info['NetworkSettings']['Ports'].values[0][0]['HostPort'].to_i
@@ -137,7 +142,7 @@ if ARGV[0] == '--run'
       Doremi::logger.info "consul registration, data: #{reg}"
       reg
     elsif event.status == 'stop'
-      dereg = Doremi::Consul::Deregister.new(event.id)
+      dereg = Doremi::Consul::Deregister.new(event.id, $opts.fetch(:consul, 'http://localhost:8500'))
       Doremi::logger.info "consul deregistration, id=#{dereg}"
       dereg
     else

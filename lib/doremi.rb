@@ -10,6 +10,7 @@ module Doremi
 
   # Version history.
   VERSION_HISTORY = [
+    ['0.0.3',   '2017-05-30', "Support for Consul inside Docker"],
     ['0.0.2',   '2017-05-26', "Added Consul deregistration"],
     ['0.0.1',   '2017-05-23', "Initial revision"]
   ]
@@ -103,11 +104,11 @@ end
 #####################
 # --== Bootstrap ==--
 
-$opts = ARGV.getopts('', 'run', 'consul:').map{|k,v| [k.to_sym, v]}.to_h
+opts = ARGV.getopts('', 'run', 'consul-url:').map{|k,v| [k.sub('-', '_').to_sym, v]}.to_h
 
-$opts[:consul] = ENV['CONSUL_URL'] if ENV.has_key? 'CONSUL_URL'
-
-if $opts[:run]
+if opts[:run]
+  CONSUL_URL      = opts[:consul_url] || ENV['CONSUL_URL'] || 'http://localhost:8500'
+  SERVICE_ADDRESS = File.exist?('/.dockerenv') ? `ip route`[/\d+\.\d+\.\d+\.\d+/] : Socket.gethostname # register to gateway if inside docker
 
   STDOUT.sync = true
   Doremi::logger = Logger.new(STDOUT)
@@ -129,9 +130,9 @@ if $opts[:run]
       info = Docker::Container.get(event.id).info
 # puts JSON.pretty_generate(info['Config'])
       service_name = info['Config']['Image'].split('/')[1]
-      reg = Doremi::Consul::Register.new(service_name, $opts.fetch(:consul, 'http://localhost:8500'))
+      reg = Doremi::Consul::Register.new(service_name, CONSUL_URL)
       reg.params[:ID] = info['id']
-      reg.params[:Address] = Socket.gethostname
+      reg.params[:Address] = SERVICE_ADDRESS
       reg.params[:Port] = info['NetworkSettings']['Ports'].values[0][0]['HostPort'].to_i
       reg.params[:Check] = {
           Name: "health-check for #{service_name}",
@@ -142,7 +143,7 @@ if $opts[:run]
       Doremi::logger.info "consul registration, data: #{reg}"
       reg
     elsif event.status == 'stop'
-      dereg = Doremi::Consul::Deregister.new(event.id, $opts.fetch(:consul, 'http://localhost:8500'))
+      dereg = Doremi::Consul::Deregister.new(event.id, CONSUL_URL)
       Doremi::logger.info "consul deregistration, id=#{dereg}"
       dereg
     else

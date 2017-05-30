@@ -2,12 +2,14 @@ require 'logger'
 require 'json'
 require 'docker'
 require 'consul'
+require 'socket'
 
 # This module represents namespace of the tool.
 module Doremi
 
   # Version history.
   VERSION_HISTORY = [
+    ['0.0.2',   '2017-05-26', "Added Consul deregistration"],
     ['0.0.1',   '2017-05-23', "Initial revision"]
   ]
   # Current version.
@@ -50,6 +52,7 @@ module Doremi
       Doremi::logger.info "starting..., version=#{VERSION}, pid=#{Process.pid}"
       trap('INT')  { shutdown }
       trap('TERM')  { shutdown }
+      Docker.options[:read_timeout] = 3600 # need to be made higher than 60 seconds if expecting a long time between events
 
       # preconditions
       ETL.each { |k| raise "invalid ETL, missing key=#{k}" if service(k).nil? }
@@ -118,12 +121,22 @@ if ARGV[0] == '--run'
   transform = lambda do |event|
     if event.status == 'start'
       info = Docker::Container.get(event.id).info
-# puts JSON.pretty_generate(info['Config']['Image'])
-      reg = Doremi::Consul::Register.new(info)
+# puts JSON.pretty_generate(info['Config'])
+      service_name = info['Config']['Image'].split('/')[1]
+      reg = Doremi::Consul::Register.new(service_name)
+      reg.params[:ID] = info['id']
+      reg.params[:Address] = Socket.gethostname
+      reg.params[:Port] = info['NetworkSettings']['Ports'].values[0][0]['HostPort'].to_i
+      reg.params[:Check] = {
+          Name: "health-check for #{service_name}",
+          script: 'echo "AHOJ"',
+          interval: '30s'
+      }
+
       Doremi::logger.info "consul registration, data: #{reg}"
       reg
     elsif event.status == 'stop'
-      dereg = Doremi::Consul::Deregister.new(event)
+      dereg = Doremi::Consul::Deregister.new(event.id)
       Doremi::logger.info "consul deregistration, id=#{dereg}"
       dereg
     else

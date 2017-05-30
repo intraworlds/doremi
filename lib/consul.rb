@@ -8,31 +8,27 @@ module Doremi
     # Service registration command.
     class Register
 
-      # Constructor.
-      def initialize(docker_info, url='http://localhost:8500')
-        @reg = {}
-        @reg[:ID] = docker_info['id']
-        # @reg[:Name] = docker_info['Config']['Labels']['com.docker.compose.service']
-        @reg[:Name] = docker_info['Config']['Image'].split('/')[1]
-        @reg[:Address] = "127.0.0.1"
-        @reg[:Port] = docker_info['NetworkSettings']['Ports'].values[0][0]['HostPort'].to_i
+      attr_reader :params
 
+      # Constructor.
+      def initialize(name, url='http://localhost:8500')
+        @params = { :Name => name }
         @url = url
       end
 
       # Adds a new service, with an optional health check, to the agent.
       def exec
         Excon.put("#{@url}/v1/agent/service/register",
-            body: @reg.to_json,
+            body: @params.to_json,
             headers: {'Content-Type' => 'application/json'})
       end
 
       def to_s
-        @reg.to_s
+        @params.to_s
       end
 
       def to_json
-        @reg.to_json
+        @params.to_json
       end
 
     end
@@ -41,19 +37,19 @@ module Doremi
     class Deregister
 
       # Constructor.
-      def initialize(docker_event, url='http://localhost:8500')
-        @cid = docker_event.id
+      def initialize(docker_id, url='http://localhost:8500')
+        @did = docker_id
         @url = url
       end
 
       # Removes a service from the agent.
       def exec
-        Excon.put("#{@url}/v1/agent/service/deregister/#{@cid}",
+        Excon.put("#{@url}/v1/agent/service/deregister/#{@did}",
             headers: {'Content-Type' => 'application/json'})
       end
 
       def to_s
-        @cid
+        @did
       end
 
     end

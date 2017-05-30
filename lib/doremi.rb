@@ -104,6 +104,7 @@ end
 
 if ARGV[0] == '--run'
 
+  STDOUT.sync = true
   Doremi::logger = Logger.new(STDOUT)
   Doremi::logger.level = Logger::INFO
   Doremi::logger.level = Logger::DEBUG if __FILE__ == $0 # DEVELOPMENT MODE
